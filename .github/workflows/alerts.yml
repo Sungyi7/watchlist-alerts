@@ -1,0 +1,53 @@
+name: watchlist-alerts
+
+on:
+  schedule:
+    # Intraday (UTC). Every 30 min weekdays, every 3h weekends.
+    - cron: "*/30 * * * 1-5"
+    - cron: "0 */3 * * 0,6"
+    # Daily 8am-Eastern candidates: 12:00 UTC (EDT) and 13:00 UTC (EST).
+    # The script sends the summary only on whichever one is actually 08:00 ET.
+    - cron: "0 12 * * *"
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: watchlist-alerts
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run alerts
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN:  ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM:        ${{ secrets.TWILIO_FROM }}
+          ALERT_TO:           ${{ secrets.ALERT_TO }}
+          SEC_USER_AGENT:     ${{ secrets.SEC_USER_AGENT }}
+          REDDIT_ENABLED:     "true"
+          REDDIT_MIN_SCORE:   "80"
+          SUMMARY_ENABLED:    "true"
+          SUMMARY_HOUR:       "8"
+          SUMMARY_TZ:         "America/Toronto"
+        run: python alerts.py
+
+      - name: Save state
+        run: |
+          git config user.name  "filings-desk-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git commit -m "update alert state [skip ci]" || echo "no state change"
+          git push || echo "nothing to push"
